@@ -3,7 +3,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 from DataTransformation import LowPassFilter, PrincipalComponentAnalysis #EXTERNAL CLASSES FROM GITHUB
 from TemporalAbstraction import NumericalAbstraction
-
+from FrequencyAbstraction import FourierTransformation
+from sklearn.cluster import KMeans
 
 # --------------------------------------------------------------
 # Load data
@@ -101,23 +102,93 @@ subset[["acc_r", "gyr_r"]].plot(subplots = True)
 # --------------------------------------------------------------
 # Temporal abstraction
 # --------------------------------------------------------------
+df_temporal = df_squared.copy()
+NumAbs = NumericalAbstraction()
 
+predictor_columns = predictor_columns + ["acc_r", "gyr_r"] #add other numerical columns
+ws = int(1000/200) #window size = 1 second
+
+for col in predictor_columns:
+    df_temporal = NumAbs.abstract_numerical(df_temporal, [col], ws, "mean")
+    df_temporal = NumAbs.abstract_numerical(df_temporal, [col], ws, "std")
+    
+# different exercises may use data from previous ones since it just looks back 5 values
+#split into different sets
+
+df_temporal_list = []
+for s in df_temporal["set"].unique():
+    subset = df_temporal[df_temporal["set"] == s].copy()
+    for col in predictor_columns:
+        subset = NumAbs.abstract_numerical(subset, [col], ws, "mean")
+        subset = NumAbs.abstract_numerical(subset, [col], ws, "std")
+    df_temporal_list.append(subset) #add subset data into list?
+    
+df_temporal = pd.concat(df_temporal_list) #concat it all to one df
+
+subset[["acc_y", "acc_y_temp_mean_ws_5", "acc_y_temp_std_ws_5"]].plot()
+        
 
 # --------------------------------------------------------------
 # Frequency features
 # --------------------------------------------------------------
+
+df_freq = df_temporal.copy().reset_index()
+
+FreqAbs = FourierTransformation()
+
+fs = int(1000/200)       #sampling rate, number of samples per second
+ws = int(2800/200)  #window size, average length of rep in ms/200 = 14
+
+#df_freq = FreqAbs.abstract_frequency(df_freq, ["acc_y"], ws, fs)
+df_freq_list = []
+for s in df_freq["set"].unique():
+    subset = df_freq[df_freq["set"] == s].reset_index(drop=True).copy()
+    subset = FreqAbs.abstract_frequency(subset, predictor_columns, ws, fs)
+    
+    df_freq_list.append(subset)
+
+df_freq = pd.concat(df_freq_list).set_index("epoch (ms)", drop = True)
 
 
 # --------------------------------------------------------------
 # Dealing with overlapping windows
 # --------------------------------------------------------------
 
+df_freq = df_freq.dropna()
+#get rid of 50% of data, prevents overfitting in the long run?
+df_freq = df_freq.iloc[::2]
 
 # --------------------------------------------------------------
 # Clustering
 # --------------------------------------------------------------
+df_cluster = df_freq.copy()
 
+cluster_columns = ["acc_x", "acc_y", "acc_z"]
+k_values = range(2, 10)
+inertias = []
+
+for k in k_values: #loop over appropriate k values
+    subset = df_cluster[cluster_columns]
+    kmeans = KMeans(n_clusters = k, n_init = 20, random_state = 0)
+    cluster_labels = kmeans.fit_predict(subset) #fit predict assigns data in each row to a cluster
+    inertias.append(kmeans.inertia_) #in documentation, sum of squared distance to cluster center
+
+plt.figure(figsize = (10, 10))
+plt.plot(k_values, inertias)
+plt.xlabel("k")
+plt.ylabel("Sum of squared distances")
+plt.show()
+#clear elbow at 5
+
+kmeans = KMeans(n_clusters = 5, n_init = 20, random_state = 0)
+subset = df_cluster[cluster_columns]
+df_cluster["cluster"] = kmeans.fit_predict(subset)
+
+#plotting the cluster on a 3d graph, we can see clear groups
+# plotting the different excercises on the 3d graph, they correspond to cluster groups
+#however, some exercises are similar so 2 in one cluster.
 
 # --------------------------------------------------------------
 # Export dataset
 # --------------------------------------------------------------
+df_cluster.to_pickle("../../data/interim/03_data_features.pkl")
