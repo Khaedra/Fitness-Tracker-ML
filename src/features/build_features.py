@@ -135,7 +135,7 @@ subset[["acc_y", "acc_y_temp_mean_ws_5", "acc_y_temp_std_ws_5"]].plot()
 df_freq = df_temporal.copy().reset_index()
 
 FreqAbs = FourierTransformation()
-
+ 
 fs = int(1000/200)       #sampling rate, number of samples per second
 ws = int(2800/200)  #window size, average length of rep in ms/200 = 14
 
